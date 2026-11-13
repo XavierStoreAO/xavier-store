@@ -50,8 +50,8 @@ input,select,textarea{width:100%;padding:10px;border-radius:9px;border:1px solid
 <div class="grid">
 <div class="k"><small>A receber</small><b id="k1">0 Kz</b></div>
 <div class="k"><small>Em curso</small><b id="k2">0</b></div>
-<div class="k"><small>Lucro do mês</small><b id="k3">0 Kz</b></div>
-<div class="k"><small>Lucro total</small><b id="k4">0 Kz</b></div>
+<div class="k"><small>Lucro líquido do mês</small><b id="k3">0 Kz</b></div>
+<div class="k"><small>Dinheiro em caixa</small><b id="k4">0 Kz</b></div>
 </div>
 <div class="tabs" id="tabs"></div>
 <div id="view"></div>
@@ -76,9 +76,16 @@ input,select,textarea{width:100%;padding:10px;border-radius:9px;border:1px solid
 <div class="row" id="delrow" style="display:none"><button id="del" class="neg">Apagar pedido</button></div>
 </dialog>
 
+<dialog id="dx">
+<h2>Nova despesa</h2>
+<label>Categoria</label><select id="xc"></select>
+<div class="c2"><div><label>Valor (Kz)</label><input id="xv" type="number" inputmode="decimal"></div><div><label>Data</label><input id="xt" type="date"></div></div>
+<label>Descrição</label><input id="xd" autocomplete="off">
+<div class="row"><button id="xcx">Cancelar</button><button class="go" id="xok">Guardar</button></div>
+</dialog>
 <script>
 var EST=["A preparar","Pronto","Entregue"];
-var S={orders:[],tab:"Todos",editing:null};
+var S={orders:[],expenses:[],tab:"Todos",editing:null};var CATS=["Mercadoria","Assistente de compras","Táxi","Transporte Luanda-Huambo","Entrega","Outra"];
 var dbref=null,LS="xsm_orders2",tm=null;
 function $(i){return document.getElementById(i)}
 function kz(n){return Math.round(n).toLocaleString("pt-PT")+" Kz"}
@@ -89,7 +96,7 @@ function norm(o){
   if(o.total==null&&o.vc!=null){o.total=o.vc;o.custo=o.vf;o.qtd=1;o.unit=o.vc;o.pago=o.estado!=="Aguardando pagamento";o.estado=o.estado==="Entregue"?"Entregue":o.estado==="Comprado"?"Pronto":"A preparar"}
   return o}
 function loadLocal(){try{var r=localStorage.getItem(LS);return r?JSON.parse(r):null}catch(e){return null}}
-function saveLocal(){try{localStorage.setItem(LS,JSON.stringify(S.orders))}catch(e){}}
+function saveLocal(){try{localStorage.setItem(LS,JSON.stringify(S.orders));localStorage.setItem("xsm_exp",JSON.stringify(S.expenses))}catch(e){}}
 function remind(){var l=+(localStorage.getItem("xsm_last")||0);$("sv").textContent=(S.orders.length&&Date.now()-l>7*864e5)?"Faz uma cópia de segurança (botão Exportar)":"Guardado neste telemóvel"}
 function save(){saveLocal();remind()}
 function render(){
@@ -100,10 +107,11 @@ function render(){
     var l=lucro(o);
     if(o.estado==="Entregue"&&o.pago&&l!=null){tot+=l;if((o.data||"").slice(0,7)===ym)mes+=l}
   });
-  $("k1").textContent=kz(rec);$("k2").textContent=cur;$("k3").textContent=kz(mes);$("k4").textContent=kz(tot);
-  var tabs=["Todos","Por pagar"].concat(EST).concat(["Resumo"]);
+  $("k1").textContent=kz(rec);$("k2").textContent=cur;var F=fin();$("k3").textContent=kz(F.liqMes);$("k4").textContent=kz(F.caixa);
+  var tabs=["Todos","Por pagar"].concat(EST).concat(["Despesas","Resumo"]);
   $("tabs").innerHTML=tabs.map(function(t){return '<button class="'+(t===S.tab?"on":"")+'" data-t="'+t+'">'+t+"</button>"}).join("");
   if(S.tab==="Resumo")return resumo();
+  if(S.tab==="Despesas")return despesas();
   var list=S.orders.filter(function(o){return S.tab==="Todos"||(S.tab==="Por pagar"?!o.pago:o.estado===S.tab)}).sort(function(a,b){return(a.num||0)<(b.num||0)?1:-1});
   if(!list.length){$("view").innerHTML='<div class="empty">Ainda não há pedidos aqui.</div>';return}
   $("view").innerHTML=list.map(function(o){
@@ -114,7 +122,7 @@ function render(){
     +'<div class="row"><button data-e="'+o.id+'">Editar</button>'+(o.pago?"":'<button class="go" data-p="'+o.id+'">Marcar pago</button>')+(nx?'<button class="go" data-n="'+o.id+'">'+nx+"</button>":"")+"</div></div>";
   }).join("");
 }
-function resumo(){
+function resumoOld(){
   function agg(k){var m={};S.orders.forEach(function(o){var l=lucro(o);if(o.estado!=="Entregue"||!o.pago||l==null)return;var n=o[k]||"Sem nome";m[n]=(m[n]||0)+l});
     var a=Object.keys(m).map(function(n){return[n,m[n]]}).sort(function(a,b){return b[1]-a[1]});
     return a.length?a.map(function(x){return '<div class="r"><span>'+esc(x[0])+'</span><b class="'+(x[1]<0?"neg":"pos")+'">'+kz(x[1])+"</b></div>"}).join(""):'<div class="empty">Sem pedidos entregues e pagos.</div>'}
@@ -154,9 +162,44 @@ document.body.addEventListener("click",function(e){
   if(p){get(p.dataset.p).pago=true;save();render()}
   if(n){var o=get(n.dataset.n);o.estado=EST[EST.indexOf(o.estado)+1];if(o.estado==="Entregue")o.dataEntrega=new Date().toISOString().slice(0,10);save();render()}
 });
-$("ex").onclick=function(){var b=new Blob([JSON.stringify({v:1,orders:S.orders})],{type:"application/json"});var a=document.createElement("a");a.href=URL.createObjectURL(b);a.download="xavier-store-copia-"+new Date().toISOString().slice(0,10)+".json";document.body.appendChild(a);a.click();a.remove();try{localStorage.setItem("xsm_last",Date.now())}catch(e){}remind()};
+
+function fin(){
+  var ym=new Date().toISOString().slice(0,7),r={rec:0,areceber:0,bruto:0,desp:0,op:0,brutoMes:0,opMes:0,meses:{}};
+  S.orders.forEach(function(o){
+    var l=lucro(o);
+    if(o.pago)r.rec+=o.total||0;else r.areceber+=o.total||0;
+    if(o.estado==="Entregue"&&o.pago&&l!=null){r.bruto+=l;var m=(o.dataEntrega||o.data||"").slice(0,7);if(m===ym)r.brutoMes+=l;(r.meses[m]=r.meses[m]||{b:0,d:0}).b+=l}
+  });
+  S.expenses.forEach(function(x){
+    r.desp+=x.valor;
+    if(x.cat!=="Mercadoria"){var m=(x.data||"").slice(0,7);r.op+=x.valor;if(m===ym)r.opMes+=x.valor;(r.meses[m]=r.meses[m]||{b:0,d:0}).d+=x.valor}
+  });
+  r.liq=r.bruto-r.op;r.liqMes=r.brutoMes-r.opMes;r.caixa=r.rec-r.desp;return r}
+function finHtml(){
+  var f=fin(),h='<div class="k" style="margin-bottom:10px"><b>Finanças</b>';
+  [["Recebido",f.rec],["A receber",f.areceber],["Despesas",f.desp],["Lucro bruto",f.bruto],["Lucro líquido",f.liq],["Dinheiro em caixa",f.caixa]].forEach(function(x){h+='<div class="r"><span>'+x[0]+'</span><b class="'+(x[1]<0?"neg":"")+'">'+kz(x[1])+"</b></div>"});
+  var ms=Object.keys(f.meses).sort().reverse();
+  if(ms.length){h+='<div class="m" style="margin-top:10px">Lucro líquido por mês</div>';ms.forEach(function(m){var v=f.meses[m].b-f.meses[m].d;h+='<div class="r"><span>'+m+'</span><b class="'+(v<0?"neg":"pos")+'">'+kz(v)+"</b></div>"})}
+  return h+'<div class="m" style="margin-top:10px">O lucro só conta pedidos entregues e pagos. Despesas de mercadoria afetam só o caixa, porque o custo já está nos pedidos.</div></div>'}
+function resumo(){resumoOld();$("view").innerHTML=finHtml()+$("view").innerHTML}
+function despesas(){
+  var l=S.expenses.slice().sort(function(a,b){return(b.data||"")<(a.data||"")?-1:1});
+  $("view").innerHTML='<div class="row" style="margin:0 0 10px"><button class="go" id="addx">+ Nova despesa</button></div>'+(l.length?l.map(function(x){return '<div class="o"><div class="t"><div><b>'+esc(x.cat)+'</b><div class="m">'+esc(x.desc)+" · "+esc(x.data)+'</div></div><b>'+kz(x.valor)+'</b></div><div class="row"><button data-xd="'+x.id+'">Apagar</button></div></div>'}).join(""):'<div class="empty">Ainda não há despesas.</div>')}
+$("xc").innerHTML=CATS.map(function(c){return "<option>"+c+"</option>"}).join("");
+$("xcx").onclick=function(){$("dx").close()};
+$("xok").onclick=function(){
+  var v=num($("xv").value);if(v==null||v<=0){alert("Indica o valor da despesa.");return}
+  S.expenses.push({id:"x"+Date.now(),cat:$("xc").value,valor:v,desc:$("xd").value.trim(),data:$("xt").value||new Date().toISOString().slice(0,10)});
+  $("dx").close();save();render()};
+document.body.addEventListener("click",function(e){
+  if(e.target.closest("#addx")){$("xv").value="";$("xd").value="";$("xt").value=new Date().toISOString().slice(0,10);$("dx").showModal()}
+  var d=e.target.closest("[data-xd]");
+  if(d&&confirm("Apagar esta despesa?")){S.expenses=S.expenses.filter(function(x){return x.id!==d.dataset.xd});save();render()}
+});
+$("ex").onclick=function(){var b=new Blob([JSON.stringify({v:2,orders:S.orders,expenses:S.expenses})],{type:"application/json"});var a=document.createElement("a");a.href=URL.createObjectURL(b);a.download="xavier-store-copia-"+new Date().toISOString().slice(0,10)+".json";document.body.appendChild(a);a.click();a.remove();try{localStorage.setItem("xsm_last",Date.now())}catch(e){}remind()};
 $("im").onclick=function(){$("fi").click()};
-$("fi").onchange=function(){var f=this.files[0];if(!f)return;var r=new FileReader();r.onload=function(){try{var d=JSON.parse(r.result);if(!Array.isArray(d.orders))throw 0;if(confirm("Isto substitui os "+S.orders.length+" pedidos atuais por "+d.orders.length+". Continuar?")){S.orders=d.orders.map(norm);save();render()}}catch(e){alert("Ficheiro inválido.")}};r.readAsText(f);this.value=""};
+$("fi").onchange=function(){var f=this.files[0];if(!f)return;var r=new FileReader();r.onload=function(){try{var d=JSON.parse(r.result);if(!Array.isArray(d.orders))throw 0;if(confirm("Isto substitui os "+S.orders.length+" pedidos atuais por "+d.orders.length+". Continuar?")){S.orders=d.orders.map(norm);if(Array.isArray(d.expenses))S.expenses=d.expenses;save();render()}}catch(e){alert("Ficheiro inválido.")}};r.readAsText(f);this.value=""};
+try{S.expenses=JSON.parse(localStorage.getItem("xsm_exp")||"[]")}catch(e){S.expenses=[]}
 S.orders=(loadLocal()||[]).map(norm);render();remind();
 if(navigator.storage&&navigator.storage.persist)navigator.storage.persist();
 if("serviceWorker" in navigator)navigator.serviceWorker.register("sw.js").catch(function(){});
