@@ -46,6 +46,18 @@ input,select,textarea{width:100%;padding:10px;border-radius:9px;border:1px solid
 .item .rm{position:absolute;top:6px;right:6px;background:transparent;border:0;color:var(--bad);font-size:18px;padding:4px 8px;cursor:pointer;line-height:1}
 .item-head{font-size:12px;color:var(--mu);margin-bottom:4px}
 #addItem{background:var(--pk);color:#fff;border:0;border-radius:8px;padding:6px 12px;font-size:13px}
+.buy-group{background:var(--card);border:1px solid var(--ln);border-radius:12px;padding:12px;margin-bottom:12px}
+.buy-group h3{margin:0 0 8px;font-size:15px;color:var(--pk);display:flex;justify-content:space-between;align-items:center}
+.buy-item{padding:8px 0;border-bottom:1px solid var(--ln);display:flex;justify-content:space-between;align-items:flex-start;gap:8px}
+.buy-item:last-child{border-bottom:0}
+.buy-item .info{flex:1}
+.buy-item button{padding:6px 10px;border-radius:8px;border:1px solid var(--ok);background:transparent;color:var(--ok);font-size:13px;white-space:nowrap}
+.btn-all{background:var(--ok)!important;color:#fff!important;border:0!important;padding:5px 10px!important;border-radius:8px!important;font-size:12px!important}
+.search-box{margin-bottom:12px}
+.search-box input{width:100%;padding:11px 14px;border-radius:12px;border:1px solid var(--ln);background:var(--card);color:var(--tx);font-size:15px}
+.client-link{color:var(--pk);text-decoration:underline;cursor:pointer}
+.wa-btn{background:#25D366!important;color:#fff!important;border-color:#25D366!important}
+.hist-header{background:var(--card);border:1px solid var(--ln);border-radius:12px;padding:12px;margin-bottom:12px}
 </style>
 </head>
 <body>
@@ -57,6 +69,7 @@ input,select,textarea{width:100%;padding:10px;border-radius:9px;border:1px solid
 <div class="k"><small>Lucro líquido do mês</small><b id="k3">0 Kz</b></div>
 <div class="k"><small>Dinheiro em caixa</small><b id="k4">0 Kz</b></div>
 </div>
+<div class="search-box"><input id="search" type="search" placeholder="Pesquisar cliente, nº pedido ou produto..." autocomplete="off"></div>
 <div class="tabs" id="tabs"></div>
 <div id="view"></div>
 <div class="row"><button id="ex" class="go">Exportar cópia</button><button id="im">Importar cópia</button></div><input type="file" id="fi" accept=".json,application/json" style="display:none">
@@ -101,7 +114,7 @@ input,select,textarea{width:100%;padding:10px;border-radius:9px;border:1px solid
 </dialog>
 <script>
 var EST=["A preparar","Pronto","Entregue"];
-var S={orders:[],expenses:[],tab:"Todos",editing:null};
+var S={orders:[],expenses:[],tab:"Todos",editing:null,filterClient:null,q:""};
 var CATS=["Mercadoria","Assistente de compras","Táxi","Transporte Luanda-Huambo","Entrega","Outra"];
 var LS="xsm_orders2";
 function $(i){return document.getElementById(i)}
@@ -109,6 +122,14 @@ function kz(n){return Math.round(n).toLocaleString("pt-PT")+" Kz"}
 function num(v){var n=parseFloat(v);return isNaN(n)?null:n}
 function esc(s){var d=document.createElement("div");d.textContent=s==null?"":s;return d.innerHTML}
 function lucro(o){return o.custo!=null?o.total-o.custo:null}
+
+function cleanPhone(tel){
+  if(!tel)return "";
+  var n=String(tel).replace(/\D/g,"");
+  if(n.startsWith("244"))return n;
+  if(n.length===9)return "244"+n;
+  return n;
+}
 
 function getItems(o){
   if(o.items&&o.items.length)return o.items;
@@ -119,7 +140,8 @@ function getItems(o){
     qtd:o.qtd||1,
     unit:o.unit,
     custo:o.custo,
-    fornecedor:o.fornecedor||""
+    fornecedor:o.fornecedor||"",
+    comprado:false
   }];
 }
 
@@ -133,9 +155,11 @@ function norm(o){
       qtd:o.qtd||1,
       unit:o.unit,
       custo:o.custo,
-      fornecedor:o.fornecedor||""
+      fornecedor:o.fornecedor||"",
+      comprado:false
     }];
   }
+  o.items.forEach(function(it){if(it.comprado==null)it.comprado=false});
   var tot=0,cus=0;
   o.items.forEach(function(it){
     var q=it.qtd||1,u=it.unit||0;
@@ -160,6 +184,28 @@ function saveLocal(){try{localStorage.setItem(LS,JSON.stringify(S.orders));local
 function remind(){var l=+(localStorage.getItem("xsm_last")||0);$("sv").textContent=(S.orders.length&&Date.now()-l>7*864e5)?"Faz uma cópia de segurança (botão Exportar)":"Guardado neste telemóvel"}
 function save(){saveLocal();remind()}
 
+function countPorComprar(){
+  var n=0;
+  S.orders.forEach(function(o){
+    if(o.estado==="Entregue")return;
+    getItems(o).forEach(function(it){if(!it.comprado)n++});
+  });
+  return n;
+}
+
+function matchSearch(o,q){
+  if(!q)return true;
+  q=q.toLowerCase();
+  if(String(o.num||"").includes(q))return true;
+  if((o.cliente||"").toLowerCase().includes(q))return true;
+  if((o.contacto||"").includes(q))return true;
+  return getItems(o).some(function(it){
+    return (it.produto||"").toLowerCase().includes(q) ||
+           (it.fornecedor||"").toLowerCase().includes(q) ||
+           (it.cor||"").toLowerCase().includes(q);
+  });
+}
+
 function render(){
   var ym=new Date().toISOString().slice(0,7),rec=0,cur=0;
   S.orders.forEach(function(o){
@@ -167,15 +213,40 @@ function render(){
     if(o.estado!=="Entregue")cur++;
   });
   $("k1").textContent=kz(rec);$("k2").textContent=cur;var F=fin();$("k3").textContent=kz(F.liqMes);$("k4").textContent=kz(F.caixa);
-  var tabs=["Todos","Por pagar"].concat(EST).concat(["Despesas","Resumo"]);
-  $("tabs").innerHTML=tabs.map(function(t){return '<button class="'+(t===S.tab?"on":"")+'" data-t="'+t+'">'+t+"</button>"}).join("");
+  var porComprar=countPorComprar();
+  var tabs=["Todos","Por pagar"].concat(EST).concat(["A comprar","Despesas","Resumo"]);
+  $("tabs").innerHTML=tabs.map(function(t){
+    var label=t;
+    if(t==="A comprar"&&porComprar>0)label=t+" ("+porComprar+")";
+    return '<button class="'+(t===S.tab?"on":"")+'" data-t="'+t+'">'+label+"</button>";
+  }).join("");
+
   if(S.tab==="Resumo")return resumo();
   if(S.tab==="Despesas")return despesas();
-  var list=S.orders.filter(function(o){return S.tab==="Todos"||(S.tab==="Por pagar"?!o.pago:o.estado===S.tab)}).sort(function(a,b){return(a.num||0)<(b.num||0)?1:-1});
-  if(!list.length){$("view").innerHTML='<div class="empty">Ainda não há pedidos aqui.</div>';return}
-  $("view").innerHTML=list.map(function(o){
+  if(S.tab==="A comprar")return renderCompras();
+
+  var list=S.orders.filter(function(o){
+    if(S.filterClient && o.cliente!==S.filterClient)return false;
+    if(S.tab==="Todos")return matchSearch(o,S.q);
+    if(S.tab==="Por pagar")return !o.pago && matchSearch(o,S.q);
+    return o.estado===S.tab && matchSearch(o,S.q);
+  }).sort(function(a,b){return(a.num||0)<(b.num||0)?1:-1});
+
+  var header="";
+  if(S.filterClient){
+    header='<div class="hist-header"><b>Histórico de '+esc(S.filterClient)+'</b> · '+list.length+' pedido(s)'+
+      '<div class="row" style="margin-top:8px"><button id="clearFilter">← Voltar a todos</button></div></div>';
+  }
+
+  if(!list.length){
+    $("view").innerHTML=header+'<div class="empty">'+(S.q||S.filterClient?"Nenhum resultado encontrado.":"Ainda não há pedidos aqui.")+'</div>';
+    return;
+  }
+
+  $("view").innerHTML=header+list.map(function(o){
     var l=lucro(o),i=EST.indexOf(o.estado),nx=EST[i+1];
     var items=getItems(o);
+    var porComprarItens=items.filter(function(it){return !it.comprado}).length;
     var prodLabel="";
     if(items.length===1){
       var it=items[0];
@@ -184,11 +255,74 @@ function render(){
     }else{
       prodLabel='<b>'+items.length+' produtos</b> <span class="m">'+esc(items.map(function(it){return it.produto}).join(", "))+'</span>';
     }
-    return '<div class="o"><div class="t"><div>'+prodLabel+'<div class="m">Nº '+String(o.num||0).padStart(3,"0")+" · "+esc(o.cliente)+(o.tipo==="Revendedora"?" (revendedora)":"")+" · "+esc(o.data)+'</div></div><div><span class="b '+(o.pago?"g":"p")+'">'+(o.pago?"Pago":"Pendente")+'</span><span class="b">'+o.estado+"</span></div></div>"
-    +'<div class="t" style="margin-top:8px"><span>Venda '+kz(o.total||0)+(o.custo!=null?" · Custo "+kz(o.custo):"")+'</span><b class="'+(l==null?"":l<0?"neg":"pos")+'">'+(l==null?"":(l>0?"+":"")+kz(l))+"</b></div>"
-    +'<div class="row"><button data-e="'+o.id+'">Editar</button>'+(o.pago?"":'<button class="go" data-p="'+o.id+'">Marcar pago</button>')+(nx?'<button class="go" data-n="'+o.id+'">'+nx+"</button>":"")+"</div>"
-    +'<div class="row"><button data-c="'+o.id+'">Enviar comprovativo</button></div></div>';
+    var buyBadge=porComprarItens>0?'<span class="b p">'+porComprarItens+' por comprar</span>':"";
+    var wa="";
+    if(o.contacto){
+      var phone=cleanPhone(o.contacto);
+      if(phone)wa='<button class="wa-btn" data-wa="'+phone+'">WhatsApp</button>';
+    }
+    return '<div class="o"><div class="t"><div>'+prodLabel+
+      '<div class="m">Nº '+String(o.num||0).padStart(3,"0")+' · <span class="client-link" data-client="'+esc(o.cliente)+'">'+esc(o.cliente)+'</span>'+
+      (o.tipo==="Revendedora"?" (revendedora)":"")+" · "+esc(o.data)+'</div></div>'+
+      '<div><span class="b '+(o.pago?"g":"p")+'">'+(o.pago?"Pago":"Pendente")+'</span><span class="b">'+o.estado+"</span>"+buyBadge+"</div></div>"+
+      '<div class="t" style="margin-top:8px"><span>Venda '+kz(o.total||0)+(o.custo!=null?" · Custo "+kz(o.custo):"")+'</span><b class="'+(l==null?"":l<0?"neg":"pos")+'">'+(l==null?"":(l>0?"+":"")+kz(l))+"</b></div>"+
+      '<div class="row"><button data-e="'+o.id+'">Editar</button>'+(o.pago?"":'<button class="go" data-p="'+o.id+'">Marcar pago</button>')+(nx?'<button class="go" data-n="'+o.id+'">'+nx+"</button>":"")+wa+"</div>"+
+      '<div class="row"><button data-c="'+o.id+'">Enviar comprovativo</button></div></div>';
   }).join("");
+}
+
+function renderCompras(){
+  var groups={};
+  var totalItens=0, totalCusto=0;
+  S.orders.forEach(function(o){
+    if(o.estado==="Entregue")return;
+    getItems(o).forEach(function(it, idx){
+      if(it.comprado)return;
+      totalItens++;
+      if(it.custo!=null)totalCusto+=it.custo;
+      var forn=it.fornecedor||"Sem fornecedor";
+      if(!groups[forn])groups[forn]=[];
+      groups[forn].push({
+        orderId:o.id,
+        itemIdx:idx,
+        num:o.num,
+        cliente:o.cliente,
+        produto:it.produto,
+        tamanho:it.tamanho,
+        cor:it.cor,
+        qtd:it.qtd||1,
+        unit:it.unit,
+        custo:it.custo,
+        pago:o.pago
+      });
+    });
+  });
+
+  var keys=Object.keys(groups).sort();
+  if(!keys.length){
+    $("view").innerHTML='<div class="empty">Nada por comprar de momento. 🎉<br><span class="m">Todos os produtos dos pedidos em curso já foram marcados como comprados.</span></div>';
+    return;
+  }
+
+  var html='<div class="k" style="margin-bottom:12px"><small>Itens por comprar</small><b>'+totalItens+'</b>'+(totalCusto?' · Custo estimado '+kz(totalCusto):'')+'</div>';
+
+  keys.forEach(function(forn){
+    html+='<div class="buy-group"><h3><span>'+esc(forn)+'</span><button class="btn-all" data-buyall="'+esc(forn)+'">Marcar todos</button></h3>';
+    groups[forn].forEach(function(g){
+      var det=[g.tamanho,g.cor,"×"+g.qtd].filter(Boolean).join(" · ");
+      html+='<div class="buy-item">'+
+        '<div class="info">'+
+          '<b>'+esc(g.produto)+'</b> <span class="m">'+esc(det)+'</span>'+
+          '<div class="m">Pedido Nº '+String(g.num||0).padStart(3,"0")+' · '+esc(g.cliente)+(g.pago?' · <span class="pos">Pago</span>':' · <span class="neg">Pendente</span>')+'</div>'+
+          (g.custo!=null?'<div class="m">Custo: '+kz(g.custo)+'</div>':'')+
+        '</div>'+
+        '<button data-buy="'+g.orderId+':'+g.itemIdx+'">Já comprei</button>'+
+      '</div>';
+    });
+    html+='</div>';
+  });
+
+  $("view").innerHTML=html;
 }
 
 function resumoOld(){
@@ -234,7 +368,12 @@ function addItemLine(data){
     '<div class="c2">'+
       '<div><label>Custo total (Kz)</label><input class="ic" type="number" inputmode="decimal" value="'+(data.custo!=null?data.custo:"")+'"></div>'+
       '<div><label>Fornecedor</label><input class="iff" value="'+esc(data.fornecedor||"")+'"></div>'+
-    '</div>';
+    '</div>'+
+    '<div style="margin-top:8px"><label>Estado da compra</label>'+
+      '<select class="icomp">'+
+        '<option value="0"'+(data.comprado?"":" selected")+'>Por comprar</option>'+
+        '<option value="1"'+(data.comprado?" selected":"")+'>Já comprei</option>'+
+      '</select></div>';
   $("items").appendChild(div);
   div.querySelector(".rm").onclick=function(){
     if($("items").querySelectorAll(".item").length<=1){alert("Tem de ficar pelo menos 1 produto.");return}
@@ -291,7 +430,8 @@ $("ok").onclick=function(){
       qtd:q,
       unit:u,
       custo:num(line.querySelector(".ic").value),
-      fornecedor:line.querySelector(".iff").value.trim()
+      fornecedor:line.querySelector(".iff").value.trim(),
+      comprado:line.querySelector(".icomp").value==="1"
     });
   }
   if(!items.length){alert("Adiciona pelo menos 1 produto.");return}
@@ -346,13 +486,69 @@ $("del").onclick=function(){
   }
 };
 
+$("search").oninput=function(){
+  S.q=this.value.trim();
+  S.filterClient=null;
+  render();
+};
+
 document.body.addEventListener("click",function(e){
   var t=e.target.closest("[data-t]"),ed=e.target.closest("[data-e]"),n=e.target.closest("[data-n]"),p=e.target.closest("[data-p]");
+  var buy=e.target.closest("[data-buy]"), buyall=e.target.closest("[data-buyall]");
+  var client=e.target.closest("[data-client]"), wa=e.target.closest("[data-wa]");
+  var clear=e.target.closest("#clearFilter");
+
   function get(id){return S.orders.find(function(o){return o.id===id})}
-  if(t){S.tab=t.dataset.t;render()}
+
+  if(t){S.tab=t.dataset.t;S.filterClient=null;render()}
   if(ed)openForm(get(ed.dataset.e));
   if(p){get(p.dataset.p).pago=true;save();render()}
   if(n){var o=get(n.dataset.n);o.estado=EST[EST.indexOf(o.estado)+1];if(o.estado==="Entregue")o.dataEntrega=new Date().toISOString().slice(0,10);save();render()}
+
+  if(buy){
+    var parts=buy.dataset.buy.split(":");
+    var order=get(parts[0]);
+    if(order&&order.items){
+      var idx=parseInt(parts[1],10);
+      if(order.items[idx]){
+        order.items[idx].comprado=true;
+        save();render();
+      }
+    }
+  }
+
+  if(buyall){
+    var forn=buyall.dataset.buyall;
+    if(confirm("Marcar todos os itens de \""+forn+"\" como já comprados?")){
+      S.orders.forEach(function(o){
+        if(o.estado==="Entregue")return;
+        getItems(o).forEach(function(it){
+          if(!it.comprado && (it.fornecedor||"Sem fornecedor")===forn){
+            it.comprado=true;
+          }
+        });
+      });
+      save();render();
+    }
+  }
+
+  if(client){
+    S.filterClient=client.dataset.client;
+    S.q="";
+    $("search").value="";
+    S.tab="Todos";
+    render();
+  }
+
+  if(clear){
+    S.filterClient=null;
+    render();
+  }
+
+  if(wa){
+    var phone=wa.dataset.wa;
+    window.open("https://wa.me/"+phone, "_blank");
+  }
 });
 
 function fin(){
