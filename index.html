@@ -58,7 +58,6 @@ input,select,textarea{width:100%;padding:10px;border-radius:9px;border:1px solid
 .client-link{color:var(--pk);text-decoration:underline;cursor:pointer}
 .wa-btn{background:#25D366!important;color:#fff!important;border-color:#25D366!important}
 .hist-header{background:var(--card);border:1px solid var(--ln);border-radius:12px;padding:12px;margin-bottom:12px}
-.bar{height:8px;border-radius:6px;background:var(--pk);margin-top:4px}
 </style>
 </head>
 <body>
@@ -80,9 +79,8 @@ input,select,textarea{width:100%;padding:10px;border-radius:9px;border:1px solid
 
 <dialog id="dlg">
 <h2 id="dt">Novo pedido</h2>
-<div class="c2"><div><label>Nome do cliente</label><input id="fc" list="dlc" autocomplete="off"></div><div><label>Contacto</label><input id="fk" type="tel"></div></div>
+<div class="c2"><div><label>Nome do cliente</label><input id="fc" autocomplete="off"></div><div><label>Contacto</label><input id="fk" type="tel"></div></div>
 <label>Tipo de cliente</label><select id="ft"><option>Cliente final</option><option>Revendedora</option></select>
-<div id="hint" class="m" style="margin-top:6px"></div><datalist id="dlc"></datalist><datalist id="dlp"></datalist>
 
 <div style="margin:14px 0 6px;display:flex;justify-content:space-between;align-items:center">
   <b style="color:var(--pk);font-size:15px">Produtos</b>
@@ -215,19 +213,17 @@ function render(){
     if(o.estado!=="Entregue")cur++;
   });
   $("k1").textContent=kz(rec);$("k2").textContent=cur;var F=fin();$("k3").textContent=kz(F.liqMes);$("k4").textContent=kz(F.caixa);
-  var porComprar=countPorComprar();var nAv=avisos(stats()).length;
-  var tabs=["Todos","Por pagar"].concat(EST).concat(["A comprar","Despesas","Mais pedidos","Resumo"]);
+  var porComprar=countPorComprar();
+  var tabs=["Todos","Por pagar"].concat(EST).concat(["A comprar","Despesas","Resumo"]);
   $("tabs").innerHTML=tabs.map(function(t){
     var label=t;
     if(t==="A comprar"&&porComprar>0)label=t+" ("+porComprar+")";
-    if(t==="Mais pedidos"&&nAv>0)label=t+" ("+nAv+")";
     return '<button class="'+(t===S.tab?"on":"")+'" data-t="'+t+'">'+label+"</button>";
   }).join("");
 
   if(S.tab==="Resumo")return resumo();
   if(S.tab==="Despesas")return despesas();
   if(S.tab==="A comprar")return renderCompras();
-  if(S.tab==="Mais pedidos")return maisPedidos();
 
   var list=S.orders.filter(function(o){
     if(S.filterClient && o.cliente!==S.filterClient)return false;
@@ -360,7 +356,7 @@ function addItemLine(data){
   div.innerHTML=
     '<button type="button" class="rm" title="Apagar linha">×</button>'+
     '<div class="item-head">Produto</div>'+
-    '<input class="ip" list="dlp" placeholder="Nome do produto" value="'+esc(data.produto||"")+'">'+
+    '<input class="ip" placeholder="Nome do produto" value="'+esc(data.produto||"")+'">'+
     '<div class="c2" style="margin-top:6px">'+
       '<div><label>Tamanho</label><input class="is" value="'+esc(data.tamanho||"")+'"></div>'+
       '<div><label>Cor</label><input class="io" value="'+esc(data.cor||"")+'"></div>'+
@@ -389,7 +385,7 @@ function addItemLine(data){
   calc();
 }
 
-function openForm0(o){
+function openForm(o){
   S.editing=o?o.id:null;
   $("dt").textContent=o?"Editar pedido":"Novo pedido";
   $("fc").value=o&&o.cliente?o.cliente:"";
@@ -673,65 +669,6 @@ $("fj").onchange=function(){
     alert(no+" pedido(s) novo(s) e "+nx+" despesa(s) nova(s) juntados. Os pedidos que já tinhas não foram alterados.")
   }catch(e){alert("Ficheiro inválido.")}};
   r.readAsText(f);this.value=""};
-
-function nk(s){return String(s||"").trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/\s+/g," ")}
-function sz(s){return String(s||"").trim().toUpperCase()}
-function inc(m,k,n){m[k]=(m[k]||0)+n}
-function topN(m,n){return Object.keys(m).map(function(k){return[k,m[k]]}).sort(function(a,b){return b[1]-a[1]}).slice(0,n)}
-function stats(){
-  var P={},C={},T={},CP={},now=Date.now();
-  S.orders.forEach(function(o){
-    var ck=nk(o.cliente);if(!ck)return;
-    var c=C[ck]=C[ck]||{name:o.cliente,ped:0,gasto:0,tam:{},prod:{},contacto:"",tipo:""};
-    c.ped++;c.gasto+=o.total||0;if(o.contacto)c.contacto=o.contacto;if(o.tipo)c.tipo=o.tipo;
-    var rec=(now-new Date(o.data))/864e5<=30;
-    getItems(o).forEach(function(it){
-      var pk=nk(it.produto);if(!pk)return;var q=it.qtd||1,t=sz(it.tamanho);
-      var p=P[pk]=P[pk]||{name:it.produto,qtd:0,ped:0,rec:0,recPed:0,tam:{}};
-      p.qtd+=q;p.ped++;if(rec){p.rec+=q;p.recPed++}
-      inc(c.prod,pk,q);
-      if(t){inc(p.tam,t,q);inc(T,t,q);inc(c.tam,t,q);inc(CP[ck+"|"+pk]=CP[ck+"|"+pk]||{},t,q)}
-    });
-  });
-  return{P:P,C:C,T:T,CP:CP}}
-function avisos(st){
-  var a=[];
-  Object.keys(st.P).map(function(k){return st.P[k]}).sort(function(x,y){return y.rec-x.rec}).forEach(function(p){
-    if(p.recPed>=3||p.rec>=5)a.push("«"+p.name+"» foi pedido "+p.rec+" vez(es) em "+p.recPed+" pedido(s) nos últimos 30 dias. Vê se convém ter mais à mão.")});
-  Object.keys(st.C).map(function(k){return st.C[k]}).filter(function(c){return c.ped>=3}).sort(function(x,y){return y.ped-x.ped}).forEach(function(c){
-    var t=topN(c.tam,1);a.push("Cliente habitual: "+c.name+", "+c.ped+" pedidos"+(t.length?", costuma pedir tamanho "+t[0][0]:"")+".")});
-  var tl=topN(st.T,1),tot=0;for(var z in st.T)tot+=st.T[z];
-  if(tl.length&&tot>=10&&tl[0][1]/tot>=0.5)a.push("O tamanho "+tl[0][0]+" é "+Math.round(tl[0][1]*100/tot)+"% de tudo o que foi pedido.");
-  return a.slice(0,6)}
-function maisPedidos(){
-  var st=stats(),h="",av=avisos(st);
-  h+='<div class="k" style="margin-bottom:10px"><b>Avisos</b>'+(av.length?av.map(function(t){return '<div class="r"><div>'+esc(t)+"</div></div>"}).join(""):'<div class="m" style="margin-top:6px">Ainda há poucos pedidos para tirar conclusões. Quando houver mais, os avisos aparecem aqui.</div>')+"</div>";
-  var pl=Object.keys(st.P).map(function(k){return st.P[k]}).sort(function(a,b){return b.qtd-a.qtd}).slice(0,8);
-  h+='<div class="k" style="margin-bottom:10px"><b>Produtos mais pedidos</b>'+(pl.length?pl.map(function(p){var t=topN(p.tam,2).map(function(x){return esc(x[0])+" ("+x[1]+")"}).join(", ");return '<div class="r"><div>'+esc(p.name)+'<div class="m">'+p.ped+" pedido(s)"+(t?" · tamanhos: "+t:"")+'</div></div><b>'+p.qtd+" un.</b></div>"}).join(""):'<div class="empty">Sem dados.</div>')+"</div>";
-  var tl=topN(st.T,12),mx=tl.length?tl[0][1]:1;
-  h+='<div class="k" style="margin-bottom:10px"><b>Tamanhos mais pedidos</b>'+(tl.length?tl.map(function(x){return '<div class="r" style="display:block"><div style="display:flex;justify-content:space-between"><span>'+esc(x[0])+'</span><b>'+x[1]+' un.</b></div><div class="bar" style="width:'+Math.round(x[1]*100/mx)+'%"></div></div>'}).join(""):'<div class="empty">Ainda sem tamanhos registados.</div>')+"</div>";
-  var cl=Object.keys(st.C).map(function(k){return st.C[k]}).sort(function(a,b){return b.ped-a.ped||b.gasto-a.gasto}).slice(0,10);
-  h+='<div class="k"><b>Clientes e os seus tamanhos</b>'+(cl.length?cl.map(function(c){var t=topN(c.tam,2).map(function(x){return esc(x[0])+" ("+x[1]+")"}).join(", "),pk=topN(c.prod,1);return '<div class="r"><div>'+esc(c.name)+'<div class="m">'+c.ped+" pedido(s)"+(t?" · tamanhos: "+t:"")+(pk.length&&st.P[pk[0][0]]?" · mais pedido: "+esc(st.P[pk[0][0]].name):"")+'</div></div><b>'+kz(c.gasto)+"</b></div>"}).join(""):'<div class="empty">Sem clientes.</div>')+"</div>";
-  $("view").innerHTML=h}
-function refreshLists(){
-  var C={},P={};S.orders.forEach(function(o){if(o.cliente)C[o.cliente]=1;getItems(o).forEach(function(it){if(it.produto)P[it.produto]=1})});
-  $("dlc").innerHTML=Object.keys(C).map(function(n){return '<option value="'+esc(n)+'">'}).join("");
-  $("dlp").innerHTML=Object.keys(P).map(function(n){return '<option value="'+esc(n)+'">'}).join("")}
-function hint(){
-  var h=$("hint");h.textContent="";var n=nk($("fc").value);if(!n)return;
-  var c=stats().C[n];if(!c)return;
-  var t=topN(c.tam,2);
-  h.textContent="Cliente habitual: "+c.ped+" pedido(s)"+(t.length?". Tamanhos: "+t.map(function(x){return x[0]+" ("+x[1]+")"}).join(", "):"")+".";
-  if(!$("fk").value&&c.contacto)$("fk").value=c.contacto;
-  if(S.editing==null&&c.tipo)$("ft").value=c.tipo}
-function sugSize(line){
-  var ip=line.querySelector(".ip"),is=line.querySelector(".is");if(!ip||!is)return;
-  var pk=nk(ip.value),st=stats(),m=st.CP[nk($("fc").value)+"|"+pk]||(st.P[pk]&&st.P[pk].tam)||{},t=topN(m,1);
-  is.placeholder=(t.length&&pk)?"habitual: "+t[0][0]:""}
-function openForm(o){openForm0(o);refreshLists();hint();document.querySelectorAll("#items .item").forEach(sugSize)}
-$("fc").addEventListener("input",hint);
-$("fc").addEventListener("change",function(){hint();document.querySelectorAll("#items .item").forEach(sugSize)});
-$("items").addEventListener("change",function(e){var l=e.target.closest(".item");if(l&&e.target.classList.contains("ip"))sugSize(l)});
 $("ex").onclick=function(){var b=new Blob([JSON.stringify({v:3,orders:S.orders,expenses:S.expenses})],{type:"application/json"});var a=document.createElement("a");a.href=URL.createObjectURL(b);a.download="xavier-store-copia-"+new Date().toISOString().slice(0,10)+".json";document.body.appendChild(a);a.click();a.remove();try{localStorage.setItem("xsm_last",Date.now())}catch(e){}remind()};
 $("im").onclick=function(){$("fi").click()};
 $("fi").onchange=function(){var f=this.files[0];if(!f)return;var r=new FileReader();r.onload=function(){try{var d=JSON.parse(r.result);if(!Array.isArray(d.orders))throw 0;if(confirm("Isto substitui os "+S.orders.length+" pedidos atuais por "+d.orders.length+". Continuar?")){S.orders=d.orders.map(norm);if(Array.isArray(d.expenses))S.expenses=d.expenses;save();render()}}catch(e){alert("Ficheiro inválido.")}};r.readAsText(f);this.value=""};
