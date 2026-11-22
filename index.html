@@ -61,8 +61,9 @@ input,select,textarea{width:100%;padding:10px;border-radius:9px;border:1px solid
 .bar{height:8px;border-radius:6px;background:var(--pk);margin-top:4px}
 .mic{padding:2px 8px;font-size:12px;margin-left:6px;border-radius:12px;border:1px solid var(--ln);background:var(--bg);color:var(--tx)}
 .mic.on{background:var(--pk);color:#fff;border-color:var(--pk)}
-.mini{display:flex;gap:6px;margin-top:6px}
+.mini{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
 .mini button{flex:1;padding:6px;font-size:12px;border-radius:8px;border:1px solid var(--ln);background:var(--bg);color:var(--tx)}
+.al{background:var(--card);border:1px solid var(--bad);color:var(--bad);border-radius:10px;padding:8px 12px;font-size:14px;margin-bottom:12px}
 </style>
 </head>
 <body>
@@ -75,16 +76,16 @@ input,select,textarea{width:100%;padding:10px;border-radius:9px;border:1px solid
 <div class="k"><small>Dinheiro em caixa</small><b id="k4">0 Kz</b></div>
 </div>
 <div class="search-box"><input id="search" type="search" placeholder="Pesquisar cliente, nº pedido ou produto..." autocomplete="off"></div>
-<div class="tabs" id="tabs"></div>
+<div id="al"></div><div class="tabs" id="tabs"></div>
 <div id="view"></div>
-<div class="row"><button id="ex" class="go">Exportar cópia</button><button id="im">Importar cópia</button></div><div class="row"><button id="jn">Juntar pedidos de outra cópia</button><button id="sr">Série</button></div><input type="file" id="fi" accept=".json,application/json" style="display:none"><input type="file" id="fj" accept=".json,application/json" style="display:none">
+<div class="row"><button id="ex" class="go">Exportar cópia</button><button id="im">Importar cópia</button></div><div class="row"><button id="es" class="go">Enviar cópia por WhatsApp</button></div><div class="row"><button id="jn">Juntar pedidos de outra cópia</button><button id="sr">Série</button></div><div class="row"><button id="gc">Link do grupo de WhatsApp</button></div><input type="file" id="fi" accept=".json,.txt,application/json,text/plain" style="display:none"><input type="file" id="fj" accept=".json,.txt,application/json,text/plain" style="display:none">
 <div id="sv" style="margin-top:8px"></div>
 </main>
 <button class="fab" id="add">+ Novo pedido</button>
 
 <dialog id="dlg">
 <h2 id="dt">Novo pedido</h2>
-<div class="c2"><div><label>Nome do cliente <button type="button" class="mic" data-mic="fc">🎤 Ditar</button></label><input id="fc" list="dlc" autocomplete="off"></div><div><label>Contacto</label><input id="fk" type="tel"><div class="mini"><button type="button" id="wa">WhatsApp</button><button type="button" id="pk">Contactos</button></div></div></div>
+<div class="c2"><div><label>Nome do cliente <button type="button" class="mic" data-mic="fc">🎤 Ditar</button></label><input id="fc" list="dlc" autocomplete="off"></div><div><label>Contacto</label><input id="fk" type="tel"><div class="mini"><button type="button" id="wa">WhatsApp</button><button type="button" id="pk">Contactos</button><button type="button" id="gr" style="flex:1 0 100%">👥 Grupo Xavier Store</button></div></div></div>
 <label>Tipo de cliente</label><select id="ft"><option>Cliente final</option><option>Revendedora</option></select>
 <div id="hint" class="m" style="margin-top:6px"></div><datalist id="dlc"></datalist><datalist id="dlp"></datalist>
 
@@ -106,6 +107,7 @@ input,select,textarea{width:100%;padding:10px;border-radius:9px;border:1px solid
   <div><label>Entrega</label><select id="fe"><option>Levantamento</option><option>Entrega</option></select></div>
   <div><label>Estado</label><select id="fz"><option>A preparar</option><option>Pronto</option><option>Entregue</option></select></div>
 </div>
+<label>Entrega prevista</label><input id="fprev" type="date">
 <label>Observações <button type="button" class="mic" data-mic="fb">🎤 Ditar</button></label><textarea id="fb" rows="2"></textarea>
 <div class="row"><button id="cx">Cancelar</button><button class="go" id="ok">Guardar</button></div>
 <div class="row" id="delrow" style="display:none"><button id="del" class="neg">Apagar pedido</button></div>
@@ -193,7 +195,7 @@ function save(){saveLocal();remind()}
 function countPorComprar(){
   var n=0;
   S.orders.forEach(function(o){
-    if(o.estado==="Entregue")return;
+    if(o.estado==="Entregue"||o.estado==="Cancelado")return;
     getItems(o).forEach(function(it){if(!it.comprado)n++});
   });
   return n;
@@ -215,17 +217,20 @@ function matchSearch(o,q){
 function render(){
   var ym=new Date().toISOString().slice(0,7),rec=0,cur=0;
   S.orders.forEach(function(o){
-    if(!o.pago)rec+=o.total||0;
-    if(o.estado!=="Entregue")cur++;
+    if(o.estado!=="Cancelado"&&!o.pago)rec+=o.total||0;
+    if(o.estado!=="Entregue"&&o.estado!=="Cancelado")cur++;
   });
   $("k1").textContent=kz(rec);$("k2").textContent=cur;var F=fin();$("k3").textContent=kz(F.liqMes);$("k4").textContent=kz(F.caixa);
   var porComprar=countPorComprar();var nAv=avisos(stats()).length;
-  var tabs=["Todos","Lista rápida","Por pagar"].concat(EST).concat(["A comprar","Despesas","Mais pedidos","Resumo"]);
+  var nAt=S.orders.filter(atrasado).length,nHj=S.orders.filter(paraHoje).length;
+  $("al").innerHTML=(nAt||nHj)?'<div class="al"'+(nAt?' data-t="Atrasados" style="cursor:pointer"':'')+'>⚠ '+(nAt?nAt+(nAt>1?" pedidos com entrega atrasada":" pedido com entrega atrasada"):"")+(nAt&&nHj?" · ":"")+(nHj?nHj+(nHj>1?" para entregar hoje":" para entregar hoje"):"")+'</div>':"";
+  var tabs=["Todos","Lista rápida"].concat(nAt>0?["Atrasados"]:[],["Por pagar"],EST).concat(["Cancelado","A comprar","Despesas","Mais pedidos","Resumo"]);
   $("tabs").innerHTML=tabs.map(function(t){
     var label=t;
     if(t==="A comprar"&&porComprar>0)label=t+" ("+porComprar+")";
     if(t==="Mais pedidos"&&nAv>0)label=t+" ("+nAv+")";
     if(t==="Lista rápida"&&S.drafts.length)label=t+" ("+S.drafts.length+")";
+    if(t==="Atrasados")label=t+" ("+nAt+")";
     return '<button class="'+(t===S.tab?"on":"")+'" data-t="'+t+'">'+label+"</button>";
   }).join("");
 
@@ -238,7 +243,8 @@ function render(){
   var list=S.orders.filter(function(o){
     if(S.filterClient && o.cliente!==S.filterClient)return false;
     if(S.tab==="Todos")return matchSearch(o,S.q);
-    if(S.tab==="Por pagar")return !o.pago && matchSearch(o,S.q);
+    if(S.tab==="Atrasados")return atrasado(o)&&matchSearch(o,S.q);
+    if(S.tab==="Por pagar")return !o.pago && o.estado!=="Cancelado" && matchSearch(o,S.q);
     return o.estado===S.tab && matchSearch(o,S.q);
   }).sort(function(a,b){return(a.num||0)<(b.num||0)?1:-1});
 
@@ -254,7 +260,7 @@ function render(){
   }
 
   $("view").innerHTML=header+list.map(function(o){
-    var l=lucro(o),i=EST.indexOf(o.estado),nx=EST[i+1];
+    var l=lucro(o),i=EST.indexOf(o.estado),canc=o.estado==="Cancelado",nx=canc?null:EST[i+1];
     var items=getItems(o);
     var porComprarItens=items.filter(function(it){return !it.comprado}).length;
     var prodLabel="";
@@ -273,11 +279,11 @@ function render(){
     }
     return '<div class="o"><div class="t"><div>'+prodLabel+
       '<div class="m">Nº '+String(o.num||0).padStart(3,"0")+' · <span class="client-link" data-client="'+esc(o.cliente)+'">'+esc(o.cliente)+'</span>'+
-      (o.tipo==="Revendedora"?" (revendedora)":"")+" · "+esc(o.data)+'</div></div>'+
-      '<div><span class="b '+(o.pago?"g":"p")+'">'+(o.pago?"Pago":"Pendente")+'</span><span class="b">'+o.estado+"</span>"+buyBadge+"</div></div>"+
+      (o.tipo==="Revendedora"?" (revendedora)":"")+" · "+esc(o.data)+(o.previsto?" · entrega prevista "+esc(dmy(o.previsto)):"")+'</div></div>'+
+      '<div><span class="b '+(o.pago?"g":"p")+'">'+(o.pago?"Pago":"Pendente")+'</span><span class="b">'+o.estado+"</span>"+buyBadge+(atrasado(o)?'<span class="b p">Atrasado</span>':"")+(canc&&o.devolvido?'<span class="b">Devolvido '+kz(o.devolvido)+"</span>":"")+"</div></div>"+
       '<div class="t" style="margin-top:8px"><span>Venda '+kz(o.total||0)+(o.custo!=null?" · Custo "+kz(o.custo):"")+'</span><b class="'+(l==null?"":l<0?"neg":"pos")+'">'+(l==null?"":(l>0?"+":"")+kz(l))+"</b></div>"+
-      '<div class="row"><button data-e="'+o.id+'">Editar</button>'+(o.pago?"":'<button class="go" data-p="'+o.id+'">Marcar pago</button>')+(nx?'<button class="go" data-n="'+o.id+'">'+nx+"</button>":"")+wa+"</div>"+
-      '<div class="row"><button data-c="'+o.id+'">Enviar comprovativo</button></div></div>';
+      '<div class="row"><button data-e="'+o.id+'">Editar</button>'+(o.pago||canc?"":'<button class="go" data-p="'+o.id+'">Marcar pago</button>')+(nx?'<button class="go" data-n="'+o.id+'">'+nx+"</button>":"")+wa+"</div>"+
+      '<div class="row"><button data-c="'+o.id+'">Enviar comprovativo</button>'+(canc?'<button data-ro="'+o.id+'">Reabrir</button>':(o.estado==="Entregue"?"":'<button data-cx="'+o.id+'">Cancelar pedido</button>'))+"</div></div>";
   }).join("");
 }
 
@@ -285,7 +291,7 @@ function renderCompras(){
   var groups={};
   var totalItens=0, totalCusto=0;
   S.orders.forEach(function(o){
-    if(o.estado==="Entregue")return;
+    if(o.estado==="Entregue"||o.estado==="Cancelado")return;
     getItems(o).forEach(function(it, idx){
       if(it.comprado)return;
       totalItens++;
@@ -395,7 +401,8 @@ function addItemLine(data){
   calc();
 }
 
-function openForm0(o){
+function openForm0(o){var fz=$("fz");while(fz.options.length>3)fz.remove(3);if(o&&o.estado==="Cancelado"){var op=document.createElement("option");op.textContent="Cancelado";fz.appendChild(op)}
+  
   S.editing=o?o.id:null;
   $("dt").textContent=o?"Editar pedido":"Novo pedido";
   $("fc").value=o&&o.cliente?o.cliente:"";
@@ -405,7 +412,7 @@ function openForm0(o){
   $("fm").value=o&&o.forma?o.forma:"Transferência";
   $("fe").value=o&&o.entrega?o.entrega:"Levantamento";
   $("fz").value=o&&o.estado?o.estado:"A preparar";
-  $("fb").value=o&&o.obs?o.obs:"";
+  $("fb").value=o&&o.obs?o.obs:"";$("fprev").value=o&&o.previsto?o.previsto:"";
   $("delrow").style.display=o?"flex":"none";
 
   $("items").innerHTML="";
@@ -463,7 +470,7 @@ $("ok").onclick=function(){
     forma:$("fm").value,
     entrega:$("fe").value,
     estado:$("fz").value,
-    obs:$("fb").value.trim(),
+    obs:$("fb").value.trim(),previsto:$("fprev").value,
     produto:items[0].produto,
     tamanho:items[0].tamanho,
     cor:items[0].cor,
@@ -531,7 +538,7 @@ document.body.addEventListener("click",function(e){
     var forn=buyall.dataset.buyall;
     if(confirm("Marcar todos os itens de \""+forn+"\" como já comprados?")){
       S.orders.forEach(function(o){
-        if(o.estado==="Entregue")return;
+        if(o.estado==="Entregue"||o.estado==="Cancelado")return;
         getItems(o).forEach(function(it){
           if(!it.comprado && (it.fornecedor||"Sem fornecedor")===forn){
             it.comprado=true;
@@ -565,6 +572,7 @@ function fin(){
   var ym=new Date().toISOString().slice(0,7),r={rec:0,areceber:0,bruto:0,desp:0,op:0,brutoMes:0,opMes:0,meses:{}};
   S.orders.forEach(function(o){
     var l=lucro(o);
+    if(o.estado==="Cancelado"){if(o.pago)r.rec+=(o.total||0)-(o.devolvido||0);return}
     if(o.pago)r.rec+=o.total||0;else r.areceber+=o.total||0;
     if(o.estado==="Entregue"&&o.pago&&l!=null){r.bruto+=l;var m=(o.dataEntrega||o.data||"").slice(0,7);if(m===ym)r.brutoMes+=l;(r.meses[m]=r.meses[m]||{b:0,d:0}).b+=l}
   });
@@ -688,7 +696,7 @@ function topN(m,n){return Object.keys(m).map(function(k){return[k,m[k]]}).sort(f
 function stats(){
   var P={},C={},T={},CP={},now=Date.now();
   S.orders.forEach(function(o){
-    var ck=nk(o.cliente);if(!ck)return;
+    var ck=nk(o.cliente);if(!ck||o.estado==="Cancelado")return;
     var c=C[ck]=C[ck]||{name:o.cliente,ped:0,gasto:0,tam:{},prod:{},contacto:"",tipo:""};
     c.ped++;c.gasto+=o.total||0;if(o.contacto)c.contacto=o.contacto;if(o.tipo)c.tipo=o.tipo;
     var rec=(now-new Date(o.data))/864e5<=30;
@@ -738,7 +746,7 @@ function sugSize(line){
 function openForm(o){openForm0(o);refreshLists();hint();document.querySelectorAll("#items .item").forEach(sugSize)}
 $("fc").addEventListener("input",hint);
 $("fc").addEventListener("change",function(){hint();document.querySelectorAll("#items .item").forEach(sugSize)});
-$("items").addEventListener("change",function(e){var l=e.target.closest(".item");if(l&&e.target.classList.contains("ip"))sugSize(l)});
+$("items").addEventListener("change",function(e){var l=e.target.closest(".item");if(l&&e.target.classList.contains("ip")){sugSize(l);autoPreco(l)}});
 
 S.drafts=[];
 var REC=null,RECBTN=null;
@@ -756,7 +764,7 @@ function ditar(el,btn){
   try{r.start()}catch(e){REC=null;RECBTN=null;btn.classList.remove("on");btn.textContent=btn.dataset.t}}
 function rascunhos(){
   var l=S.drafts.slice().sort(function(a,b){return(b.at||0)-(a.at||0)});
-  $("view").innerHTML='<div class="k" style="margin-bottom:10px"><b>Lista rápida</b><div class="m">Fala ou escreve os pedidos à medida que chegam. Depois organizas e crias o pedido completo.</div><div class="mini"><button type="button" class="mic" data-mic="dtx" style="flex:0 0 auto;padding:6px 12px">🎤 Ditar</button></div><textarea id="dtx" rows="3" placeholder="Ex: Maria quer 2 vestidos tamanho M, pretos" style="margin-top:8px"></textarea><div class="row"><button class="go" id="dsv">Guardar na lista</button></div></div>'
+  $("view").innerHTML='<div class="k" style="margin-bottom:10px"><b>Lista rápida</b><div class="m">Fala ou escreve os pedidos à medida que chegam. Depois organizas e crias o pedido completo.</div><div class="mini"><button type="button" class="mic" data-mic="dtx" style="flex:0 0 auto;padding:6px 12px">🎤 Ditar</button></div><textarea id="dtx" rows="8" placeholder="Ex: Maria quer 2 vestidos tamanho M, pretos" style="margin-top:8px;min-height:180px;resize:vertical"></textarea><div class="row"><button class="go" id="dsv">Guardar na lista</button></div></div>'
   +(l.length?'<div class="row" style="margin:0 0 10px"><button id="dsh">Partilhar lista</button></div>'+l.map(function(q){return '<div class="o"><div>'+esc(q.text)+'</div><div class="m">'+esc(dmy(q.d||""))+'</div><div class="row"><button data-dc="'+q.id+'">Criar pedido</button><button data-dd="'+q.id+'">Feito</button></div></div>'}).join(""):'<div class="empty">A lista está vazia.</div>')}
 $("wa").onclick=function(){var n=cleanPhone($("fk").value);if(!n){alert("Escreve primeiro o contacto.");return}window.open("https://wa.me/"+n,"_blank")};
 $("pk").onclick=function(){
@@ -781,6 +789,57 @@ document.body.addEventListener("click",function(e){
   if(c){var q=S.drafts.find(function(x){return x.id===c.dataset.dc});if(q){S.tab="Todos";render();openForm(null);$("fb").value="Da lista rápida: "+q.text}return}
   var d=e.target.closest("[data-dd]");
   if(d&&confirm("Marcar como feito? Sai da lista.")){S.drafts=S.drafts.filter(function(x){return x.id!==d.dataset.dd});save();render()}
+});
+
+function grupoLink(){try{return localStorage.getItem("xsm_grupo")||""}catch(e){return""}}
+function okGrupo(v){return /^https:\/\/chat\.whatsapp\.com\/[A-Za-z0-9]+/.test(v)}
+$("gr").onclick=function(){
+  var l=grupoLink();
+  if(!l){
+    var v=prompt("Cola aqui o link do grupo de WhatsApp (começa por https://chat.whatsapp.com/). Fica guardado só neste telemóvel.");
+    if(!v)return;v=v.trim();
+    if(!okGrupo(v)){alert("Esse link não parece ser de um grupo de WhatsApp.");return}
+    try{localStorage.setItem("xsm_grupo",v)}catch(e){}l=v}
+  window.open(l,"_blank")};
+$("gc").onclick=function(){
+  var v=prompt("Link do grupo de WhatsApp. Deixa vazio para apagar o link guardado.",grupoLink());
+  if(v===null)return;v=v.trim();
+  if(!v){try{localStorage.removeItem("xsm_grupo")}catch(e){}alert("Link apagado.");return}
+  if(!okGrupo(v)){alert("Esse link não parece ser de um grupo de WhatsApp.");return}
+  try{localStorage.setItem("xsm_grupo",v)}catch(e){}alert("Link guardado neste telemóvel.")};
+
+function hoje(){var d=new Date();return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0")}
+function atrasado(o){return !!o.previsto&&o.estado!=="Entregue"&&o.estado!=="Cancelado"&&o.previsto<hoje()}
+function paraHoje(o){return o.previsto===hoje()&&o.estado!=="Entregue"&&o.estado!=="Cancelado"}
+function autoPreco(line){
+  var ip=line.querySelector(".ip"),pk=nk(ip.value);if(!pk)return;
+  var iu=line.querySelector(".iu"),ic=line.querySelector(".ic"),iff=line.querySelector(".iff"),iq=line.querySelector(".iq"),best=null;
+  S.orders.forEach(function(o){if(o.id===S.editing||o.estado==="Cancelado")return;getItems(o).forEach(function(it){if(nk(it.produto)===pk&&(!best||(o.num||0)>=best.num))best={num:o.num||0,it:it}})});
+  if(!best)return;var it=best.it,q=num(iq.value)||1;
+  if(!iu.value&&it.unit!=null){iu.value=it.unit;iu.dispatchEvent(new Event("input",{bubbles:true}))}
+  if(!ic.value&&it.custo!=null){var cu=it.custo/(it.qtd||1);ic.dataset.auto="1";ic.dataset.cu=cu;ic.value=Math.round(cu*q*100)/100;ic.dispatchEvent(new Event("input",{bubbles:true}))}
+  if(iff&&!iff.value&&it.fornecedor)iff.value=it.fornecedor}
+$("items").addEventListener("input",function(e){
+  var l=e.target.closest(".item");if(!l)return;
+  if(e.target.classList.contains("ic")&&e.isTrusted)e.target.dataset.auto="0";
+  if(e.target.classList.contains("iq")){var ic=l.querySelector(".ic");if(ic.dataset.auto==="1"&&ic.dataset.cu){ic.value=Math.round(ic.dataset.cu*(num(e.target.value)||1)*100)/100;ic.dispatchEvent(new Event("input",{bubbles:true}))}}});
+$("es").onclick=function(){
+  var f=new File([JSON.stringify({v:3,orders:S.orders,expenses:S.expenses,drafts:S.drafts})],"xavier-store-copia-"+new Date().toISOString().slice(0,10)+".txt",{type:"text/plain"});
+  function feito(){try{localStorage.setItem("xsm_last",Date.now())}catch(e){}remind()}
+  if(navigator.canShare&&navigator.canShare({files:[f]})){navigator.share({files:[f],title:"Cópia Xavier Store"}).then(feito).catch(function(){})}
+  else{var a=document.createElement("a");a.href=URL.createObjectURL(f);a.download=f.name;document.body.appendChild(a);a.click();a.remove();feito();alert("Este telemóvel não abriu o menu de partilha. O ficheiro foi descarregado: envia-o pelo WhatsApp a partir das descargas.")}};
+document.body.addEventListener("click",function(e){
+  var cx=e.target.closest("[data-cx]"),ro=e.target.closest("[data-ro]");
+  if(cx){
+    var o=S.orders.find(function(x){return x.id===cx.dataset.cx});if(!o)return;
+    if(!confirm("Cancelar este pedido? Deixa de contar nas vendas e no lucro."))return;
+    var dv=0;
+    if(o.pago){var v=prompt("A cliente já tinha pago "+kz(o.total||0)+". Quanto devolveste? (0 se não devolveste nada)","0");if(v===null)return;dv=num(v)||0;if(dv<0||dv>(o.total||0)){alert("Valor inválido.");return}}
+    o.estado="Cancelado";o.devolvido=dv;save();render();return}
+  if(ro){
+    var q=S.orders.find(function(x){return x.id===ro.dataset.ro});if(!q)return;
+    if(!confirm("Reabrir este pedido? Volta a contar nas vendas."))return;
+    q.estado="A preparar";q.devolvido=0;save();render()}
 });
 $("ex").onclick=function(){var b=new Blob([JSON.stringify({v:3,orders:S.orders,expenses:S.expenses,drafts:S.drafts})],{type:"application/json"});var a=document.createElement("a");a.href=URL.createObjectURL(b);a.download="xavier-store-copia-"+new Date().toISOString().slice(0,10)+".json";document.body.appendChild(a);a.click();a.remove();try{localStorage.setItem("xsm_last",Date.now())}catch(e){}remind()};
 $("im").onclick=function(){$("fi").click()};
