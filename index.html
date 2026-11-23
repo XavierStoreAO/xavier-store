@@ -65,6 +65,10 @@ input,select,textarea{width:100%;padding:10px;border-radius:9px;border:1px solid
 .mini button{flex:1;padding:6px;font-size:12px;border-radius:8px;border:1px solid var(--ln);background:var(--bg);color:var(--tx)}
 .al{background:var(--card);border:1px solid var(--bad);color:var(--bad);border-radius:10px;padding:8px 12px;font-size:14px;margin-bottom:12px}
 .pick .o{cursor:pointer}
+.th{object-fit:cover;border-radius:10px;flex:0 0 auto;background:var(--bg);border:1px solid var(--ln)}
+.th.ph{display:flex;align-items:center;justify-content:center;font-size:20px;color:var(--mu)}
+.row0{display:flex;gap:10px;align-items:center}
+.thr{display:flex;gap:6px;margin-bottom:6px}
 .catbtn{width:100%;padding:12px;border-radius:10px;border:1px solid var(--pk);background:var(--card);color:var(--pk);font-size:15px;margin:0 0 8px}
 </style>
 </head>
@@ -125,12 +129,14 @@ input,select,textarea{width:100%;padding:10px;border-radius:9px;border:1px solid
 </dialog>
 <dialog id="dcp">
 <h2 id="dct">Nova peça</h2>
+<div class="row0" style="margin:8px 0"><div id="cfoto"></div><div style="flex:1"><button type="button" id="cph1" class="mic" style="padding:8px 12px;font-size:14px">📷 Foto</button> <button type="button" id="cph0" class="mic" style="padding:8px 12px;font-size:14px">Remover</button></div></div><input type="file" id="cph" accept="image/*" style="display:none">
 <label>Nome da peça <button type="button" class="mic" data-mic="cn">🎤 Ditar</button></label><input id="cn" autocomplete="off">
 <div class="c2"><div><label>Preço de venda (Kz)</label><input id="cpv" type="number" inputmode="decimal"></div><div><label>Custo por unidade (Kz)</label><input id="cc" type="number" inputmode="decimal"></div></div>
 <label>Fornecedor</label><input id="cf" autocomplete="off">
 <div class="row"><button id="ccx">Cancelar</button><button class="go" id="cok">Guardar</button></div>
 <div class="row" id="cdrow" style="display:none"><button id="cdel" class="neg">Apagar peça</button></div>
 </dialog>
+<dialog id="dbig"><img id="bigimg" style="width:100%;border-radius:10px"><div class="row"><button id="bigx">Fechar</button></div></dialog>
 <dialog id="dpick" class="pick">
 <h2>Escolher do catálogo</h2>
 <input id="pq" placeholder="Pesquisar peça..." autocomplete="off">
@@ -289,6 +295,7 @@ function render(){
     }else{
       prodLabel='<b>'+items.length+' produtos</b> <span class="m">'+esc(items.map(function(it){return it.produto}).join(", "))+'</span>';
     }
+    prodLabel=thumbsRow(items)+prodLabel;
     var buyBadge=porComprarItens>0?'<span class="b p">'+porComprarItens+' por comprar</span>':"";
     var wa="";
     if(o.contacto){
@@ -703,6 +710,7 @@ $("fj").onchange=function(){
     (Array.isArray(d.expenses)?d.expenses:[]).forEach(function(x){if(x&&x.id&&!haveX[x.id]){S.expenses.push(x);haveX[x.id]=1;nx++}});
     var hd={};S.drafts.forEach(function(q){hd[q.id]=1});(Array.isArray(d.drafts)?d.drafts:[]).forEach(function(q){if(q&&q.id&&!hd[q.id]){S.drafts.push(q);hd[q.id]=1}});
     var hc={};S.cat.forEach(function(q){hc[q.id]=1});(Array.isArray(d.cat)?d.cat:[]).forEach(function(q){if(q&&q.id&&!hc[q.id]){S.cat.push(q);hc[q.id]=1}});
+    if(d.fotos&&typeof d.fotos==="object"){Object.keys(d.fotos).forEach(function(k){if(!FOTOS[k]&&S.cat.some(function(c){return c.id===k})){FOTOS[k]=d.fotos[k];idbPut(k,d.fotos[k])}})}
     save();render();
     alert(no+" pedido(s) novo(s) e "+nx+" despesa(s) nova(s) juntados. Os pedidos que já tinhas não foram alterados.")
   }catch(e){alert("Ficheiro inválido.")}};
@@ -762,12 +770,12 @@ function sugSize(line){
   var ip=line.querySelector(".ip"),is=line.querySelector(".is");if(!ip||!is)return;
   var pk=nk(ip.value),st=stats(),m=st.CP[nk($("fc").value)+"|"+pk]||(st.P[pk]&&st.P[pk].tam)||{},t=topN(m,1);
   is.placeholder=(t.length&&pk)?"habitual: "+t[0][0]:""}
-function openForm(o){openForm0(o);refreshLists();hint();document.querySelectorAll("#items .item").forEach(sugSize)}
+function openForm(o){openForm0(o);refreshLists();hint();document.querySelectorAll("#items .item").forEach(function(l){var c=catByName(l.querySelector(".ip").value);if(c)lineThumb(l,c.id)});document.querySelectorAll("#items .item").forEach(sugSize)}
 $("fc").addEventListener("input",hint);
 $("fc").addEventListener("change",function(){hint();document.querySelectorAll("#items .item").forEach(sugSize)});
 $("items").addEventListener("change",function(e){var l=e.target.closest(".item");if(l&&e.target.classList.contains("ip")){sugSize(l);autoPreco(l)}});
 
-S.drafts=[];S.cat=[];
+S.drafts=[];S.cat=[];var FOTOS={};
 var REC=null,RECBTN=null;
 function ditar(el,btn){
   var SR=window.SpeechRecognition||window.webkitSpeechRecognition;
@@ -837,7 +845,7 @@ function autoPreco(line){
   if(cpi){var qq=num(iq.value)||1;
     if(!iu.value){iu.value=cpi.preco;iu.dispatchEvent(new Event("input",{bubbles:true}))}
     if(!ic.value&&cpi.custo!=null){ic.dataset.auto="1";ic.dataset.cu=cpi.custo;ic.value=Math.round(cpi.custo*qq*100)/100;ic.dispatchEvent(new Event("input",{bubbles:true}))}
-    if(iff&&!iff.value&&cpi.forn)iff.value=cpi.forn;return}
+    if(iff&&!iff.value&&cpi.forn)iff.value=cpi.forn;lineThumb(line,cpi.id);return}
   S.orders.forEach(function(o){if(o.id===S.editing||o.estado==="Cancelado")return;getItems(o).forEach(function(it){if(nk(it.produto)===pk&&(!best||(o.num||0)>=best.num))best={num:o.num||0,it:it}})});
   if(!best)return;var it=best.it,q=num(iq.value)||1;
   if(!iu.value&&it.unit!=null){iu.value=it.unit;iu.dispatchEvent(new Event("input",{bubbles:true}))}
@@ -848,7 +856,7 @@ $("items").addEventListener("input",function(e){
   if(e.target.classList.contains("ic")&&e.isTrusted)e.target.dataset.auto="0";
   if(e.target.classList.contains("iq")){var ic=l.querySelector(".ic");if(ic.dataset.auto==="1"&&ic.dataset.cu){ic.value=Math.round(ic.dataset.cu*(num(e.target.value)||1)*100)/100;ic.dispatchEvent(new Event("input",{bubbles:true}))}}});
 $("es").onclick=function(){
-  var f=new File([JSON.stringify({v:3,orders:S.orders,expenses:S.expenses,drafts:S.drafts,cat:S.cat})],"xavier-store-copia-"+new Date().toISOString().slice(0,10)+".txt",{type:"text/plain"});
+  var f=new File([JSON.stringify({v:3,orders:S.orders,expenses:S.expenses,drafts:S.drafts,cat:S.cat,fotos:FOTOS})],"xavier-store-copia-"+new Date().toISOString().slice(0,10)+".txt",{type:"text/plain"});
   function feito(){try{localStorage.setItem("xsm_last",Date.now())}catch(e){}remind()}
   if(navigator.canShare&&navigator.canShare({files:[f]})){navigator.share({files:[f],title:"Cópia Xavier Store"}).then(feito).catch(function(){})}
   else{var a=document.createElement("a");a.href=URL.createObjectURL(f);a.download=f.name;document.body.appendChild(a);a.click();a.remove();feito();alert("Este telemóvel não abriu o menu de partilha. O ficheiro foi descarregado: envia-o pelo WhatsApp a partir das descargas.")}};
@@ -870,12 +878,12 @@ function catFind(id){return S.cat.find(function(x){return x.id===id})}
 function catalogo(){
   var l=S.cat.slice().sort(function(a,b){return nk(a.nome)<nk(b.nome)?-1:1});
   $("view").innerHTML='<div class="row" style="margin:0 0 10px"><button class="go" id="cnew">+ Nova peça</button><button id="cimp">Preencher com os meus pedidos</button></div>'
-  +(l.length?l.map(function(c){var m=c.custo!=null?c.preco-c.custo:null;return '<div class="o"><div class="t"><div><b>'+esc(c.nome)+'</b><div class="m">'+(c.forn?esc(c.forn)+" · ":"")+(c.custo!=null?"Custo "+kz(c.custo):"Sem custo")+(m!=null?" · Margem "+kz(m):"")+'</div></div><b>'+kz(c.preco)+'</b></div><div class="row"><button data-ce="'+c.id+'">Editar</button><button class="go" data-cp="'+c.id+'">Pedir</button></div></div>'}).join(""):'<div class="empty">Ainda não tens peças. Toca em "+ Nova peça" ou preenche com os teus pedidos.</div>')}
+  +(l.length?l.map(function(c){var m=c.custo!=null?c.preco-c.custo:null;return '<div class="o"><div class="t"><div class="row0">'+thumb(c.id,56,true)+'<div><b>'+esc(c.nome)+'</b><div class="m">'+(c.forn?esc(c.forn)+" · ":"")+(c.custo!=null?"Custo "+kz(c.custo):"Sem custo")+(m!=null?" · Margem "+kz(m):"")+'</div></div></div><b>'+kz(c.preco)+'</b></div><div class="row"><button data-ce="'+c.id+'">Editar</button><button class="go" data-cp="'+c.id+'">Pedir</button></div></div>'}).join(""):'<div class="empty">Ainda não tens peças. Toca em "+ Nova peça" ou preenche com os teus pedidos.</div>')}
 var CATEDIT=null;
 function openCat(c){
   CATEDIT=c?c.id:null;$("dct").textContent=c?"Editar peça":"Nova peça";
   $("cn").value=c?c.nome:"";$("cpv").value=c&&c.preco!=null?c.preco:"";$("cc").value=c&&c.custo!=null?c.custo:"";$("cf").value=c&&c.forn?c.forn:"";
-  $("cdrow").style.display=c?"flex":"none";$("dcp").showModal()}
+  CATFOTO=undefined;showFoto();$("cdrow").style.display=c?"flex":"none";$("dcp").showModal()}
 $("ccx").onclick=function(){$("dcp").close()};
 $("cok").onclick=function(){
   var n=$("cn").value.trim(),pv=num($("cpv").value),cc=num($("cc").value);
@@ -884,19 +892,20 @@ $("cok").onclick=function(){
   if(dup){alert("Já tens uma peça com esse nome.");return}
   var d={nome:n,preco:pv,custo:cc,forn:$("cf").value.trim()};
   if(CATEDIT){S.cat.forEach(function(x){if(x.id===CATEDIT)Object.assign(x,d)})}
-  else{d.id="c"+Date.now();S.cat.push(d)}
+  else{d.id="c"+Date.now();S.cat.push(d);CATEDIT=d.id}
+  salvaFoto(CATEDIT);
   $("dcp").close();save();render()};
-$("cdel").onclick=function(){if(confirm("Apagar esta peça do catálogo? Os pedidos já feitos não mudam.")){S.cat=S.cat.filter(function(x){return x.id!==CATEDIT});$("dcp").close();save();render()}};
+$("cdel").onclick=function(){if(confirm("Apagar esta peça do catálogo? Os pedidos já feitos não mudam.")){S.cat=S.cat.filter(function(x){return x.id!==CATEDIT});delete FOTOS[CATEDIT];idbDel(CATEDIT);$("dcp").close();save();render()}};
 function addCat(id){
   var c=catFind(id);if(!c)return;
   document.querySelectorAll("#items .item").forEach(function(l){if(!l.querySelector(".ip").value.trim()&&!l.querySelector(".iu").value)l.remove()});
   addItemLine({produto:c.nome,qtd:1,unit:c.preco,custo:c.custo,fornecedor:c.forn||"",comprado:false});
   var ls=document.querySelectorAll("#items .item"),l=ls[ls.length-1],ic=l.querySelector(".ic");
   if(c.custo!=null){ic.dataset.auto="1";ic.dataset.cu=c.custo}
-  calc();l.querySelector(".is").focus()}
+  calc();lineThumb(l,c.id);l.querySelector(".is").focus()}
 function listPick(){
   var q=nk($("pq").value),l=S.cat.filter(function(c){return !q||nk(c.nome).indexOf(q)>=0}).sort(function(a,b){return nk(a.nome)<nk(b.nome)?-1:1});
-  $("plist").innerHTML=l.length?l.map(function(c){return '<div class="o" data-pick="'+c.id+'"><div class="t"><b>'+esc(c.nome)+'</b><b>'+kz(c.preco)+'</b></div></div>'}).join(""):'<div class="empty">'+(S.cat.length?"Nenhuma peça encontrada.":"O catálogo está vazio. Cria peças no separador Catálogo.")+'</div>'}
+  $("plist").innerHTML=l.length?l.map(function(c){return '<div class="o" data-pick="'+c.id+'"><div class="t"><div class="row0">'+thumb(c.id,48,false)+'<b>'+esc(c.nome)+'</b></div><b>'+kz(c.preco)+'</b></div></div>'}).join(""):'<div class="empty">'+(S.cat.length?"Nenhuma peça encontrada.":"O catálogo está vazio. Cria peças no separador Catálogo.")+'</div>'}
 $("bcat").onclick=function(){$("pq").value="";listPick();$("dpick").showModal()};
 $("pq").addEventListener("input",listPick);
 $("pcx").onclick=function(){$("dpick").close()};
@@ -911,9 +920,48 @@ document.body.addEventListener("click",function(e){
     Object.keys(last).forEach(function(k){if(have[k])return;var it=last[k];if(it.unit==null)return;S.cat.push({id:"c"+Date.now()+n,nome:it.produto,preco:it.unit,custo:it.custo!=null?it.custo/(it.qtd||1):null,forn:it.fornecedor||""});n++});
     save();render();alert(n?n+" peça(s) acrescentada(s) ao catálogo, com o último preço e custo de cada uma. Confirma os valores.":"Não havia peças novas nos teus pedidos.")}
 });
-$("ex").onclick=function(){var b=new Blob([JSON.stringify({v:3,orders:S.orders,expenses:S.expenses,drafts:S.drafts,cat:S.cat})],{type:"application/json"});var a=document.createElement("a");a.href=URL.createObjectURL(b);a.download="xavier-store-copia-"+new Date().toISOString().slice(0,10)+".json";document.body.appendChild(a);a.click();a.remove();try{localStorage.setItem("xsm_last",Date.now())}catch(e){}remind()};
+
+var IDBH=null,CATFOTO;
+function idbOpen(){return new Promise(function(res){
+  if(IDBH)return res(IDBH);
+  try{var r=indexedDB.open("xsm_fotos",1);r.onupgradeneeded=function(){r.result.createObjectStore("f")};r.onsuccess=function(){IDBH=r.result;res(IDBH)};r.onerror=function(){res(null)}}catch(e){res(null)}})}
+function idbPut(k,v){return idbOpen().then(function(db){if(!db)return false;return new Promise(function(res){var t=db.transaction("f","readwrite");t.objectStore("f").put(v,k);t.oncomplete=function(){res(true)};t.onerror=function(){res(false)};t.onabort=function(){res(false)}})})}
+function idbDel(k){return idbOpen().then(function(db){if(!db)return;var t=db.transaction("f","readwrite");t.objectStore("f").delete(k)})}
+function idbAll(){return idbOpen().then(function(db){if(!db)return{};return new Promise(function(res){var o={},t=db.transaction("f","readonly"),c=t.objectStore("f").openCursor();c.onsuccess=function(){var cur=c.result;if(cur){o[cur.key]=cur.value;cur.continue()}else res(o)};c.onerror=function(){res(o)}})})}
+function idbReset(m){return idbOpen().then(function(db){if(!db)return;var t=db.transaction("f","readwrite"),st=t.objectStore("f");st.clear();Object.keys(m).forEach(function(k){st.put(m[k],k)})})}
+function reduzir(file,max,q){return new Promise(function(res,rej){
+  var img=new Image(),u=URL.createObjectURL(file);
+  img.onload=function(){var k=Math.min(1,max/Math.max(img.width,img.height)),c=document.createElement("canvas");c.width=Math.max(1,Math.round(img.width*k));c.height=Math.max(1,Math.round(img.height*k));
+    var x=c.getContext("2d");x.fillStyle="#fff";x.fillRect(0,0,c.width,c.height);x.drawImage(img,0,0,c.width,c.height);URL.revokeObjectURL(u);res(c.toDataURL("image/jpeg",q))};
+  img.onerror=function(){URL.revokeObjectURL(u);rej()};img.src=u})}
+function thumb(id,size,big){
+  var f=FOTOS[id];
+  return f?'<img class="th" '+(big?'data-big="'+id+'" ':'')+'src="'+f+'" style="width:'+size+'px;height:'+size+'px">':'<div class="th ph" style="width:'+size+'px;height:'+size+'px">📦</div>'}
+function catByName(n){var k=nk(n);return k?S.cat.find(function(c){return nk(c.nome)===k}):null}
+function thumbsRow(items){
+  var h="",n=0;items.forEach(function(it){var c=catByName(it.produto);if(c&&FOTOS[c.id]&&n<4){h+=thumb(c.id,40,true);n++}});
+  return h?'<div class="thr">'+h+'</div>':""}
+function lineThumb(line,id){
+  var h=line.querySelector(".item-head");if(!h||!FOTOS[id])return;
+  h.innerHTML='<span class="row0"><span>Produto</span>'+thumb(id,36,true)+'</span>'}
+function showFoto(){
+  var src=CATFOTO!==undefined?CATFOTO:(CATEDIT&&FOTOS[CATEDIT]?FOTOS[CATEDIT]:null);
+  $("cfoto").innerHTML=src?'<img class="th" src="'+src+'" style="width:96px;height:96px">':'<div class="th ph" style="width:96px;height:96px;font-size:30px">📦</div>'}
+function salvaFoto(id){
+  if(typeof CATFOTO==="string"){FOTOS[id]=CATFOTO;idbPut(id,CATFOTO).then(function(ok){if(!ok)alert("Não foi possível guardar a foto neste telemóvel.")})}
+  else if(CATFOTO===null){delete FOTOS[id];idbDel(id)}}
+$("cph1").onclick=function(){$("cph").click()};
+$("cph0").onclick=function(){CATFOTO=null;showFoto()};
+$("cph").onchange=function(){var f=this.files[0];this.value="";if(!f)return;reduzir(f,360,0.65).then(function(d){CATFOTO=d;showFoto()}).catch(function(){alert("Não consegui abrir essa imagem.")})};
+$("bigx").onclick=function(){$("dbig").close()};
+document.body.addEventListener("click",function(e){
+  var b=e.target.closest("[data-big]");
+  if(b&&FOTOS[b.dataset.big]){$("bigimg").src=FOTOS[b.dataset.big];$("dbig").showModal()}
+});
+idbAll().then(function(m){if(m&&Object.keys(m).length){FOTOS=m;render()}});
+$("ex").onclick=function(){var b=new Blob([JSON.stringify({v:3,orders:S.orders,expenses:S.expenses,drafts:S.drafts,cat:S.cat,fotos:FOTOS})],{type:"application/json"});var a=document.createElement("a");a.href=URL.createObjectURL(b);a.download="xavier-store-copia-"+new Date().toISOString().slice(0,10)+".json";document.body.appendChild(a);a.click();a.remove();try{localStorage.setItem("xsm_last",Date.now())}catch(e){}remind()};
 $("im").onclick=function(){$("fi").click()};
-$("fi").onchange=function(){var f=this.files[0];if(!f)return;var r=new FileReader();r.onload=function(){try{var d=JSON.parse(r.result);if(!Array.isArray(d.orders))throw 0;if(confirm("Isto substitui os "+S.orders.length+" pedidos atuais por "+d.orders.length+". Continuar?")){S.orders=d.orders.map(norm);if(Array.isArray(d.expenses))S.expenses=d.expenses;if(Array.isArray(d.drafts))S.drafts=d.drafts;if(Array.isArray(d.cat))S.cat=d.cat;save();render()}}catch(e){alert("Ficheiro inválido.")}};r.readAsText(f);this.value=""};
+$("fi").onchange=function(){var f=this.files[0];if(!f)return;var r=new FileReader();r.onload=function(){try{var d=JSON.parse(r.result);if(!Array.isArray(d.orders))throw 0;if(confirm("Isto substitui os "+S.orders.length+" pedidos atuais por "+d.orders.length+". Continuar?")){S.orders=d.orders.map(norm);if(Array.isArray(d.expenses))S.expenses=d.expenses;if(Array.isArray(d.drafts))S.drafts=d.drafts;if(Array.isArray(d.cat))S.cat=d.cat;if(d.fotos&&typeof d.fotos==="object"){FOTOS=d.fotos;idbReset(FOTOS)}save();render()}}catch(e){alert("Ficheiro inválido.")}};r.readAsText(f);this.value=""};
 try{S.expenses=JSON.parse(localStorage.getItem("xsm_exp")||"[]")}catch(e){S.expenses=[]}
 try{S.drafts=JSON.parse(localStorage.getItem("xsm_drafts")||"[]")}catch(e){S.drafts=[]}
 try{S.cat=JSON.parse(localStorage.getItem("xsm_cat")||"[]")}catch(e){S.cat=[]}
